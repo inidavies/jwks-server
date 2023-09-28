@@ -22,6 +22,37 @@ function isKeyExpired(expiryTimestamp) {
     return currentTimestamp > expiryTimestamp;
 }
 
+app.get('/keyPair', (req, res) => {
+
+    // Generate an RSA key pair with a key size of 2048 bits
+    const keyPair = forge.pki.rsa.generateKeyPair(2048);
+
+    // Export the keys in PEM format
+    const privateKeyPem = forge.pki.privateKeyToPem(keyPair.privateKey);
+    const publicKeyPem = forge.pki.publicKeyToPem(keyPair.publicKey);
+
+    // Generate a unique Key ID (kid) for this key pair
+    const kid = generateUniqueKeyID();
+
+    // Set an expiry timestamp
+    const currentTimestamp = Math.floor(Date.now() / 1000); // Current time in seconds
+    const expirationTimestamp = currentTimestamp + 60; // 60 seconds (1 minute) from the current time
+    const expiryTimestamp = new Date(expirationTimestamp * 1000); // Convert to milliseconds
+
+    // Store the key pair and metadata
+    const keyMetadata = {
+        kid,
+        privateKey: privateKeyPem,
+        publicKey: publicKeyPem,
+        expiryTimestamp,
+    };
+
+    keyPairs.push(keyMetadata);
+
+    // Return the keys and metadata as a JSON response
+    res.status(200).json(keyMetadata);
+});
+
 app.get('/jwks', (req, res) => {
     // Filter and include only unexpired key pairs
     const validKeyPairs = keyPairs.filter(keyPair => !isKeyExpired(keyPair.expiryTimestamp));
@@ -40,7 +71,7 @@ app.get('/jwks', (req, res) => {
         })
     };
 
-    res.json(jwksResponse);
+    res.status(200).json(jwksResponse);
 });
 
 app.post('/auth', (req, res) => {
@@ -71,42 +102,17 @@ app.post('/auth', (req, res) => {
     // Sign the payload using the selected key pair's private key
     const token = jwt.sign(payload, unexpiredKeyPair.privateKey, { algorithm: 'RS256' });
 
-    res.json({ token });
+    res.status(200).json({ token });
 });
 
-
-app.get('/keyPair', (req, res) => {
-
-    // Generate an RSA key pair with a key size of 2048 bits
-    const keyPair = forge.pki.rsa.generateKeyPair(2048);
-
-    // Export the keys in PEM format
-    const privateKeyPem = forge.pki.privateKeyToPem(keyPair.privateKey);
-    const publicKeyPem = forge.pki.publicKeyToPem(keyPair.publicKey);
-
-    // Generate a unique Key ID (kid) for this key pair
-    const kid = generateUniqueKeyID();
-
-    // Set an expiry timestamp
-    const currentTimestamp = Math.floor(Date.now() / 1000); // Current time in seconds
-    const expirationTimestamp = currentTimestamp + 60; // 60 seconds (1 minute) from the current time
-    const expiryTimestamp = new Date(expirationTimestamp * 1000); // Convert to milliseconds
-
-    // Store the key pair and metadata
-    const keyMetadata = {
-        kid,
-        privateKey: privateKeyPem,
-        publicKey: publicKeyPem,
-        expiryTimestamp,
-    };
-
-    keyPairs.push(keyMetadata);
-
-    // Return the keys and metadata as a JSON response
-    res.json(keyMetadata);
+app.get('/', (req, res) => {
+    res.send(`Running on http://localhost:${PORT}`);
 });
 
-app.listen(
+const server = app.listen(
     PORT,
     () => console.log(`Running on http://localhost:${PORT}`)
 )
+
+// Export both app and server for testing purposes
+module.exports = { app, server };

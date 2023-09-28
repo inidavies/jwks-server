@@ -1,30 +1,39 @@
-const express = require('express');
-const { expect } = require('chai');
 const request = require('supertest');
+const { app, server } = require('../index');
 
-// Import your Express app
-const app = require('../your-app-file.js');
+// Close the server after all tests have finished
+afterAll((done) => {
+    server.close(done);
+});
 
-describe('Express App Tests', () => {
-    it('should respond with valid JWKS', async () => {
-        const response = await request(app).get('/jwks');
-        expect(response.status).to.equal(200);
-        expect(response.body).to.have.property('keys').to.be.an('array');
+describe('Server', () => {
+    describe('GET /', () => {
+        it('should run on port 8080 and respond with message', async () => {
+            const response = await request(app).get('/');
+            expect(response.status).toBe(200); 
+            expect(response.text).toContain('Running on http://localhost:8080');
+        });
     });
-
-    it('should create a new key pair', async () => {
-        const response = await request(app).get('/keyPair');
-        expect(response.status).to.equal(200);
-        expect(response.body).to.have.property('kid');
-        // Add more assertions as needed
+    describe('GET /keyPair', () => {
+        it('should create a new key pair', async () => {
+            const response = await request(app).get('/keyPair');
+            console.log(response.status);
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty('kid');
+        });
     });
-
-    it('should authenticate and generate a token', async () => {
-        const response = await request(app).post('/auth');
-        expect(response.status).to.equal(200);
-        expect(response.body).to.have.property('token');
-        // Add more assertions as needed
+    describe('GET /jwks', () => {
+        it('should respond with valid JWKS', async () => {
+            const response = await request(app).get('/jwks');
+            expect(response.status).toBe(200);
+            expect(response.body.keys).toBeInstanceOf(Array);;
+        });
     });
-
-    // Add more test cases for other routes and functions
+    describe('POST /auth', () => {
+        it('should authenticate and generate a token', async () => {
+            const response = await request(app).post('/auth');
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty('token');
+        });
+    });
 });
