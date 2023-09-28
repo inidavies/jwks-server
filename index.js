@@ -50,17 +50,14 @@ app.post('/auth', (req, res) => {
     const unexpiredKeyPair = keyPairs.find(keyPair => !isKeyExpired(keyPair.expiryTimestamp));
 
     if (!unexpiredKeyPair) {
-        return res.status(500).json({ error: 'No valid keys available.' });
+        return res.status(404).json({ error: 'No valid keys available.' });
     }
 
     const currentTimestamp = Math.floor(Date.now() / 1000); // Current time in seconds
 
     const payload = {
-        sub: 'user_id',
-        name: 'John Doe',
         iat: currentTimestamp,
     };
-
     
     // Conditionally set the expiration time based on the "expired" query parameter
     if (expired === 'true') {

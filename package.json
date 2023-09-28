@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "jest": "^29.7.0",
+    "nyc": "^15.1.0",
     "supertest": "^6.3.3"
   }
 }
