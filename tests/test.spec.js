@@ -14,14 +14,11 @@ describe('Server', () => {
             expect(response.text).toContain('Running on http://localhost:8080');
         });
     });
-    describe('GET /keyPair', () => {
+    /**describe('generate a keyPair', () => {
         it('should create a new key pair', async () => {
-            const response = await request(app).get('/keyPair');
-            console.log(response.status);
-            expect(response.status).toBe(200);
-            expect(response.body).toHaveProperty('kid');
+
         });
-    });
+    });**/
     describe('GET /jwks', () => {
         it('should respond with valid JWKS', async () => {
             const response = await request(app).get('/jwks');

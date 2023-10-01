@@ -1,0 +1,16 @@
+GET http://localhost:8080/posts
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjoidXNlckFCQyIsImlhdCI6MTY5NjE3NTYwOH0.nAsd5GgD2PqbYelsk5T2Pi8ejw4-10Zv2LCzMKGo-Ps
+
+###
+
+POST  http://localhost:8080/auth
+Content-Type: application/json
+
+{
+    "username": "userABC",
+    "password": "password123",
+    "kid": "f540a543-107b-45f3-ac7c-e24af079f9c7"
+}
+
+###
+GET http://localhost:8080/.well-known/jwks.json
