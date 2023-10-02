@@ -1,29 +1,20 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
-const PORT = 8080;
+const { v4: uuidv4 } = require('uuid');
+
 const app = express();
 app.use(express.json());
+const PORT = 8080;
 
-// Define an array to store key pairs and their metadata
-const keyPairs = [];
+// Array of keypairs
+const UnExpiredKeyPairs = {};
+const ExpiredKeyPairs = {};
 
-// generate a unique Key ID (kid)
-function generateUniqueKeyID() {
-    return uuidv4();
-}
-
-// check if a key has expired
-function isKeyExpired(expiryTimestamp) {
-    const currentTimestamp = new Date();
-    return currentTimestamp > expiryTimestamp;
-}
-
-// Generate RSA key pair
-function generateRSAKeyPair() {
-    const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
-        modulusLength: 2048, // Key size (2048 bits is a common choice)
+// Generate keypair with expiry date
+function generateRSAKeyPair(isExpired) {
+    const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
+        modulusLength: 2048,
         publicKeyEncoding: {
             type: 'spki',
             format: 'pem',
@@ -34,96 +25,131 @@ function generateRSAKeyPair() {
         },
     });
 
-    return { publicKey:publicKey, privateKey:privateKey };
-};
+    let expiry;
+    if (isExpired) {
+        expiry = new Date(Date.now() - 5 * 60 * 1000); // 5 minutes ago
+    } else {
+        expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes from now
+    }
 
-function generateAccessToken(){
-    const keyPair = generateRSAKeyPair();
-    const kid = generateUniqueKeyID();
+    const kid = generateKeyKid();
 
-    // Set an expiry timestamp
-    const currentTimestamp = Math.floor(Date.now() / 1000); // Current time in seconds
-    const expiryTimestamp = currentTimestamp + 600; // 600 seconds (10 minutes) from the current time
-    const expiry = new Date(expiryTimestamp * 1000); // Convert to milliseconds
-
-    const keyMetadata = {
+    const keyPair = {
+        privateKey,
+        publicKey,
         kid,
-        privateKey: keyPair.privateKey,
-        publicKey: keyPair.publicKey,
-        expiry: expiry
+        expiry: expiry,
     };
-    
-    keyPairs.push(keyMetadata);
+
+    if (isExpired) {
+        ExpiredKeyPairs[kid] = keyPair;
+    } else {
+        UnExpiredKeyPairs[kid] = keyPair;
+    }
+
+    return keyPair;
 }
 
-app.get('/', (req, res) => {
-    res.send(`Running on http://localhost:${PORT}`);
+
+// Generate kid using uuidv4
+function generateKeyKid() {
+    return uuidv4();
+}
+
+function getUnexpiredJWT(res, req) {
+
+    const expirationTime = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes from now
+
+    try {
+        username = JSON.parse(req.body.username);
+    } catch (error) {
+        username = 'userABC';
+    }
+
+    const user = {
+        username: username,
+        exp: Math.floor(expirationTime / 1000),
+    };
+
+    const kid = Object.keys(UnExpiredKeyPairs)[0];
+
+    const token = jwt.sign(user, UnExpiredKeyPairs[kid].privateKey, {
+        algorithm: 'RS256',
+        header:{
+            kid: kid,
+        },
+    });
+
+    res.status(200).send(token);
+}
+
+function getExpiredJWT(res, req) {
+    const expirationTime = new Date(Date.now() - 5 * 60 * 1000); // 5 minutes ago
+
+    try {
+        username = JSON.parse(req.body.username);
+    } catch (error) {
+        username = 'userABC';
+    }
+
+    const user = {
+        username: username,
+        exp: Math.floor(expirationTime / 1000),
+    };
+
+    const kid = Object.keys(ExpiredKeyPairs)[0];
+
+    const token = jwt.sign(user, ExpiredKeyPairs[kid].privateKey, {
+        algorithm: 'RS256',
+        header: {
+            kid: kid,
+        },
+    });
+
+    res.status(200).send(token);
+}
+
+app.post('/auth', (req, res) =>{
+    if (req.query.expired) {
+        getExpiredJWT(res, req); // if expired is true, return expired token
+    } else {
+        getUnexpiredJWT(res, req);
+    }
 });
 
-app.get('/.well-known/jwks.json', (req, res) => {
-    // Filter and include only unexpired key pairs
-    const validKeyPairs = keyPairs.filter(keyPair => !isKeyExpired(keyPair.expiry));
-
-    // JWK (JSON Web Key) for public keys
-    const jwks = {
-        keys: validKeyPairs.map(keyPair => {
-            return{
-                kid: keyPair.kid,
+app.get('/.well-known/jwks.json', (req, res) =>{
+    //returns only unexpired key pairs
+    const validKeyPairs = [];
+    for (const kid in UnExpiredKeyPairs) {
+        if (Object.hasOwnProperty.call(UnExpiredKeyPairs, kid)) {
+            const key = UnExpiredKeyPairs[kid];
+            validKeyPairs.push({
+                kid: kid,
                 alg: 'RS256',
                 kty: 'RSA',
                 use: 'sig',
-                n: keyPair.publicKey, // Public key modulus
-                e: 'AQAB', // Exponent for RSA keys
-            }
-        })
-    };
+                n: Buffer.from(key.publicKey, 'binary').toString('base64'),
+                e: 'AQAB',
+            });
+        }
+    }
 
-    res.status(200).json(jwks);
+    const jwks = { keys: validKeyPairs };
+    const jwksJsonKeys = JSON.stringify(jwks);
+
+    res.status(200).json(JSON.parse(jwksJsonKeys));
 });
 
-app.post('/auth', (req, res) => {
-    const { expired } = req.query;
+function initializeKeyPairs() {
+    generateRSAKeyPair(false);
+    generateRSAKeyPair(true);
+}
 
-    const kid = req.body.kid || '1234'
-    unexpiredKeyPair = keyPairs.find(keyPair => keyPair.kid === kid && !isKeyExpired(keyPair.expiry));
-
-    // Find an unexpired key pair 
-    //const unexpiredKeyPair = keyPairs.find(keyPair => !isKeyExpired(keyPair.expiry));
-
-    if (!unexpiredKeyPair) {
-        return res.status(404).json({ error: 'Invalid or expired key.' });
-    }
-    
-    const username = req.body.username;
-    const password = req.body.password;
-    const user = { name:username, password:password}
-
-    
-    // Conditionally set the expiration time based on the "expired" query parameter
-    let expirationTimestamp;
-
-    if (expired === 'true') {
-        // Use the key's expiration timestamp
-        expirationTimestamp = Math.floor(unexpiredKeyPair.expiry.getTime() / 1000);
-    } else {
-        // Set a regular expiration time (10 minutes from now)
-        const currentTimestamp = Math.floor(Date.now() / 1000); // Current time in seconds
-        expirationTimestamp = currentTimestamp + 600; // 600 seconds (10 minutes) from the current time
-    }
-    const options = {
-        algorithm: 'RS256',
-        expiresIn: '10m'
-      };
-
-    // Sign the JWT with the selected expiration timestamp and the private key
-    const accessToken = jwt.sign(user, unexpiredKeyPair.privateKey, options);
-    res.json(accessToken);
+const server = app.listen(PORT, () => {
+    // Initialize with 2 sets of key pairs
+    initializeKeyPairs();
+    console.log(`Running on http://localhost:${PORT}`);
 });
 
-const server = app.listen(
-    PORT,
-    () => {
-        generateAccessToken();
-        console.log(`Running on http://localhost:${PORT}`)
-    }
-);
+// Export both app and server for testing purposes
+module.exports = { app, server, UnExpiredKeyPairs, ExpiredKeyPairs, initializeKeyPairs, generateKeyKid, getExpiredJWT, generateRSAKeyPair, getUnexpiredJWT };
